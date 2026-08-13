@@ -1,0 +1,15 @@
+# 打包产物
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# Obsidian（若误拷入）
+.obsidian/workspace*
+.trash/
