@@ -12,6 +12,12 @@
 - **AI 增强** — DeepTutor 就地读 vault，问答/辅导/出题基于你的真实笔记
 - **署名追溯** — 每条记 `author`，修订留 `contributors`，回溯"谁加的、谁改过、从哪来"
 
+## 核心组件
+
+**[Obsidian](https://obsidian.md)** — 本地优先的笔记工具。笔记是纯 `.md` 文件存本地，用 `[[双链]]` 互链，自动生成反向链接与关系图谱，数据完全自有。赛博大脑用它做**存储与体系层**。
+
+**[DeepTutor](https://github.com/HKUDS/DeepTutor)** — 港大开源的 AI 辅导系统。把 Obsidian vault 挂为 `obsidian` 类型知识库后，**免索引、免 embedding**，直接就地读写笔记，提供 Web 远程访问 + AI 问答/辅导/出题。赛博大脑用它做**远程访问与 AI 检索层**。
+
 ## 架构
 
 ```mermaid
