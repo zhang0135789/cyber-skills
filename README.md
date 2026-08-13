@@ -56,17 +56,17 @@ flowchart LR
 ## 安装
 
 ```bash
-git clone https://github.com/zhang0135789/workbuddy-skills.git
+git clone https://github.com/zhang0135789/cyber-skills.git
 ```
 
 把赛博大脑拷贝到 WorkBuddy 用户级 skill 目录：
 
 ```bash
 # Windows (PowerShell)
-Copy-Item -Recurse workbuddy-skills/skills/knowledge-vault "$HOME/.workbuddy/skills/knowledge-vault"
+Copy-Item -Recurse cyber-skills/skills/knowledge-vault "$HOME/.workbuddy/skills/knowledge-vault"
 
 # macOS / Linux
-cp -r workbuddy-skills/skills/knowledge-vault ~/.workbuddy/skills/knowledge-vault
+cp -r cyber-skills/skills/knowledge-vault ~/.workbuddy/skills/knowledge-vault
 ```
 
 > 用户级 `~/.workbuddy/skills/<技能名>/` 全项目通用；项目级 `<项目>/.workbuddy/skills/<技能名>/` 仅团队共享。
@@ -113,7 +113,7 @@ python scripts/kb_ops.py remote                     # DeepTutor 健康检查
 ## 目录约定
 
 ```
-workbuddy-skills/
+cyber-skills/
 ├── README.md                 # 本文件（技能索引）
 ├── LICENSE
 └── skills/
