@@ -255,6 +255,50 @@ def cmd_remote(args):
             print(f"[{label}] 不可达: {e}")
 
 
+def cmd_config(args):
+    import urllib.request
+    print("=== 赛博大脑 配置自检 ===\n")
+    issues = []
+
+    vault_ok = VAULT.exists()
+    notes_n = len(all_notes())
+    print(f"vault 路径 (KB_VAULT): {VAULT}  [{'OK, ' + str(notes_n) + ' 篇' if vault_ok else '不存在'}]")
+    if not vault_ok:
+        issues.append("vault 不存在：setx KB_VAULT \"<你的 Obsidian vault 路径>\"")
+
+    for label, var, url in [
+        ("本地", "DEEPTUTOR_URL", DEEPTUTOR_URL),
+        ("局域网", "DEEPTUTOR_LAN_URL", DEEPTUTOR_LAN_URL),
+    ]:
+        try:
+            urllib.request.urlopen(url + "/api/v1/knowledge/list", timeout=4)
+            print(f"DeepTutor {label} ({var}): {url}  [OK]")
+        except Exception:
+            print(f"DeepTutor {label} ({var}): {url}  [不可达]")
+            issues.append(f"{label} DeepTutor 不可达：确认服务在跑，或 setx {var} \"http://<地址>:3782\"")
+
+    pub = os.environ.get("KB_PUBLIC_URL", "")
+    if pub:
+        try:
+            urllib.request.urlopen(pub + "/api/v1/knowledge/list", timeout=5)
+            print(f"公网 (KB_PUBLIC_URL): {pub}  [OK]")
+        except Exception:
+            print(f"公网 (KB_PUBLIC_URL): {pub}  [不可达]")
+            issues.append("公网地址不可达：检查 frpc/隧道是否在跑")
+    else:
+        print("公网 (KB_PUBLIC_URL): (未配置)")
+        issues.append("公网地址未配置：如需远程访问 setx KB_PUBLIC_URL \"http://<公网地址>:端口\"")
+
+    print(f"默认署名 (KB_AUTHOR): {os.environ.get('KB_AUTHOR', '用户')}")
+    print()
+    if issues:
+        print("[需配置] 以下项需处理后再入库：")
+        for i in issues:
+            print(f"  - {i}")
+    else:
+        print("[OK] 所有关键配置就绪。")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Knowledge Vault operations CLI")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -282,11 +326,12 @@ def main():
     l.add_argument("dst")
     sub.add_parser("dedup").add_argument("query")
     sub.add_parser("remote")
+    sub.add_parser("config")
     args = ap.parse_args()
     {
         "list": cmd_list, "search": cmd_search, "show": cmd_show, "add": cmd_add,
         "update": cmd_update, "backlinks": cmd_backlinks, "link": cmd_link,
-        "dedup": cmd_dedup, "remote": cmd_remote,
+        "dedup": cmd_dedup, "remote": cmd_remote, "config": cmd_config,
     }[args.cmd](args)
 
 

@@ -30,6 +30,16 @@ agent_created: true
 
 按以下顺序执行，任何一步用户否定则中止当次入库。
 
+### 0. 配置自检 Preflight
+首次使用本 skill、或怀疑配置变更时，先自检知识库地址是否就绪：
+```
+python scripts/kb_ops.py config
+```
+- 输出 `[OK] 所有关键配置就绪` → 静默继续。
+- 输出 `[需配置]` → **暂停入库**，向用户提示缺失项与配置命令（vault 路径 / DeepTutor 地址 / 公网地址 / 署名），待用户配置后再继续。例：
+  > 知识库地址还没配好：① vault 路径未设 → `setx KB_VAULT "..."`；② 公网地址未配 → `setx KB_PUBLIC_URL "http://..."`。配好后重开会话即可。
+- 已知配置稳定的后续触发可跳过本步，避免打扰。
+
 ### 1. 识别 Identify
 主动判断对话中是否出现值得长期沉淀的内容。判断标准见下方「AI 入库准则」。识别到时，不要沉默——向用户点明"这条值得入库"并简述理由。
 
@@ -113,7 +123,7 @@ python scripts/kb_ops.py dedup "<拟用标题>"
 
 1. **DeepTutor Web（局域网，默认）**：浏览器开 `http://192.168.0.4:3782` → 左侧 Knowledge 选 `obsidian-vault` → AI 就地读 vault 笔记辅导/问答/出题。
 2. **Obsidian 客户端（本机）**：用 Obsidian 打开 vault，享完整双链/图谱/插件。
-3. **公网访问（可选，需部署）**：经 Cloudflare Tunnel + Access 把 DeepTutor 安全暴露到公网，仅白名单邮箱可访问。完整部署见 `references/public-access.md`，一键脚本 `scripts/setup_cloudflare_tunnel.ps1`。
+3. **公网访问（可选，需部署）**：经 Cloudflare Tunnel + Access 把 DeepTutor 安全暴露到公网，仅白名单邮箱可访问。完整部署见 `references/public-access.md`，一键脚本 `scripts/setup_cloudflare_tunnel.ps1`。也可用 **frp 内网穿透**（需自建公网服务器，见 `references/public-access.md` 方案 B）。
 
 ### 公网访问部署要点
 - 安全模型：**Access 在 CF 边缘做认证，DeepTutor 自身保持免 AUTH**（本地/局域网/MCP 桥接零摩擦）。
@@ -136,6 +146,7 @@ python scripts/kb_ops.py backlinks "<笔记名>"       # 列出谁链接了它
 python scripts/kb_ops.py link "<源>" "<目标>"       # 在源笔记补一条 [[目标]] 双链
 python scripts/kb_ops.py dedup "<关键词>"           # 找潜在重复条目
 python scripts/kb_ops.py remote                     # 打印 DeepTutor 地址并做健康检查
+python scripts/kb_ops.py config                     # 配置自检（vault/DeepTutor/公网/署名），缺失项提醒
 ```
 
 笔记名匹配不区分大小写，可省略 `.md` 后缀。
