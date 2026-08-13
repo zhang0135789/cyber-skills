@@ -98,9 +98,40 @@ cloudflared tunnel --url http://localhost:3782
 ```
 会分配一个 `https://xxx-yyy.trycloudflare.com` 随机域名，**重启就变、不能配 Access、任何人可访问**。仅用于快速验证链路，正式使用务必走上面的正式隧道 + Access。
 
+## 方案 B：frp 内网穿透（需自建有公网 IP 的服务器）
+
+若已有一台公网服务器跑 frps，用 frp 把本地 3782 透出去更直接。
+
+frpc.toml 加一条 tcp 代理：
+```toml
+serverAddr = "<你的公网服务器IP>"
+serverPort = 7000              # frps bindPort
+auth.token = "<你的token>"
+
+[[proxies]]
+name = "deeptutor"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3782
+remotePort = 10311             # 公网访问端口
+```
+
+启动 frpc 后，公网访问 `http://<公网服务器IP>:10311` 即达 DeepTutor（含写入）。
+
+> **安全警告**：frp 的 tcp 代理**不做应用层认证**。DeepTutor 默认免 AUTH，公网裸奔=任何人知道 IP:端口都能读写 vault。务必二选一：
+> 1. 在公网服务器安全组/防火墙**白名单限制** remotePort 来源 IP（推荐，最简单）
+> 2. 改用 frp `stcp` 模式（访客需 frpc + 相同 sk 才能连，相当于白名单）
+>
+> 切勿在不加任何限制的情况下长期暴露。
+
+设环境变量供 skill 引用：
+```
+setx KB_PUBLIC_URL "http://<公网服务器IP>:10311"
+```
+
 ## 与 skill 的关系
 
-公网域名配好后，建议设到环境变量供 skill 引用：
+公网域名/地址配好后，设到环境变量供 skill 引用：
 ```
 setx KB_PUBLIC_URL "https://kb.yourdomain.com"
 ```
