@@ -15,6 +15,28 @@ from pathlib import Path
 VAULT = Path(os.environ.get("KB_VAULT", r"D:\work\obsidian\贾维斯"))
 DEEPTUTOR_URL = os.environ.get("DEEPTUTOR_URL", "http://127.0.0.1:3782")
 DEEPTUTOR_LAN_URL = os.environ.get("DEEPTUTOR_LAN_URL", "http://192.168.0.4:3782")
+REMOTE_URL = os.environ.get("KB_REMOTE_URL", "").rstrip("/")
+REMOTE_TOKEN = os.environ.get("KB_API_TOKEN", "")
+
+
+def remote_call(path, params=None, method="GET"):
+    """经 HTTP 调用 vault_api（远程写入模式）。设了 KB_REMOTE_URL 即启用。"""
+    import urllib.request, urllib.parse, json as _json
+    url = REMOTE_URL + path
+    headers = {"Content-Type": "application/json"}
+    if REMOTE_TOKEN:
+        headers["X-API-Token"] = REMOTE_TOKEN
+    data = None
+    if method == "GET" and params:
+        url += "?" + urllib.parse.urlencode(params)
+    elif method == "POST":
+        data = _json.dumps(params or {}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        r = urllib.request.urlopen(req, timeout=15)
+        return _json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def now_iso():
@@ -70,6 +92,14 @@ def refresh_updated(text):
 
 
 def cmd_list(args):
+    if REMOTE_URL:
+        res = remote_call("/list")
+        if isinstance(res, dict) and "error" in res:
+            print("远程错误:", res["error"]); return
+        print(f"[远程 {REMOTE_URL}] 共 {len(res)} 篇\n")
+        for n in res:
+            print(f"- {n.get('path')}")
+        return
     notes = all_notes()
     if not notes:
         print(f"(空) vault 不存在或无笔记: {VAULT}")
@@ -88,6 +118,15 @@ def cmd_list(args):
 
 
 def cmd_search(args):
+    if REMOTE_URL:
+        res = remote_call("/search", {"q": args.query})
+        if isinstance(res, dict) and "error" in res:
+            print("远程错误:", res["error"]); return
+        for h in res:
+            print(f"{h.get('path')}:{h.get('line')}: {h.get('text')}")
+        if not res:
+            print(f"(无匹配) query={args.query}")
+        return
     q = args.query.lower()
     hits = 0
     for p in all_notes():
@@ -108,6 +147,12 @@ def cmd_search(args):
 
 
 def cmd_show(args):
+    if REMOTE_URL:
+        res = remote_call("/show", {"name": args.name})
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误/未找到:", res["error"]); return
+        print(res.get("content", ""))
+        return
     p = find_note(args.name)
     if not p:
         print(f"(未找到) {args.name}")
@@ -116,6 +161,14 @@ def cmd_show(args):
 
 
 def cmd_add(args):
+    if REMOTE_URL:
+        res = remote_call("/add", {"title": args.title, "content": args.content, "tags": args.tags,
+                                    "links": args.links, "dir": args.dir, "source": args.source,
+                                    "author": args.author or os.environ.get("KB_AUTHOR", "用户")}, "POST")
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误:", res["error"]); return
+        print(f"✅ [远程] 已新建: {res.get('path')}  作者: {res.get('author')}")
+        return
     title = args.title
     fname = slugify(title) + ".md"
     target_dir = VAULT / args.dir if args.dir else VAULT
@@ -151,6 +204,13 @@ def cmd_add(args):
 
 
 def cmd_update(args):
+    if REMOTE_URL:
+        res = remote_call("/update", {"name": args.name, "content": args.content,
+                                       "append": args.append, "by": args.by}, "POST")
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误:", res["error"]); return
+        print(f"✅ [远程] 已更新: {args.name}  updated={res.get('updated')}  contributors={res.get('contributors','')}")
+        return
     p = find_note(args.name)
     if not p:
         print(f"(未找到) {args.name}")
@@ -174,6 +234,18 @@ def cmd_update(args):
 
 
 def cmd_backlinks(args):
+    if REMOTE_URL:
+        res = remote_call("/backlinks", {"name": args.name})
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误:", res["error"]); return
+        found = res.get("backlinks", [])
+        if found:
+            print(f"[远程] 反向链接到《{res.get('note')}》({len(found)}):")
+            for f in found:
+                print(f"  - {f}")
+        else:
+            print(f"[远程] 《{res.get('note')}》无反向链接")
+        return
     target = find_note(args.name)
     if not target:
         print(f"(未找到目标笔记) {args.name}")
@@ -199,6 +271,12 @@ def cmd_backlinks(args):
 
 
 def cmd_link(args):
+    if REMOTE_URL:
+        res = remote_call("/link", {"src": args.src, "dst": args.dst}, "POST")
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误:", res["error"]); return
+        print(f"✅ [远程] 已加双链: {args.src} -> [[{args.dst}]]  ({res.get('status')})")
+        return
     src = find_note(args.src)
     dst = find_note(args.dst)
     if not src:
@@ -221,6 +299,16 @@ def cmd_link(args):
 
 
 def cmd_dedup(args):
+    if REMOTE_URL:
+        res = remote_call("/dedup", {"q": args.query})
+        if isinstance(res, dict) and res.get("error"):
+            print("远程错误:", res["error"]); return
+        if not res:
+            print("[远程] (无相关条目，可新建)"); return
+        print(f"[远程] 潜在相关条目 (query={args.query}):")
+        for r in res:
+            print(f"  - {r.get('path')}  (命中 {r.get('score')})")
+        return
     q = args.query.lower()
     print(f"潜在相关条目 (query={args.query}):\n")
     found = False
@@ -290,6 +378,20 @@ def cmd_config(args):
         issues.append("公网地址未配置：如需远程访问 setx KB_PUBLIC_URL \"http://<公网地址>:端口\"")
 
     print(f"默认署名 (KB_AUTHOR): {os.environ.get('KB_AUTHOR', '用户')}")
+
+    if REMOTE_URL:
+        try:
+            h = remote_call("/health")
+            if isinstance(h, dict) and h.get("status") == "ok":
+                print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [OK, {h.get('notes')} 篇]")
+            else:
+                print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [不可达: {h}]")
+                issues.append("远程写入 API 不可达：检查 vault_api 是否在跑 + frp 隧道")
+        except Exception as e:
+            print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [不可达: {e}]")
+            issues.append("远程写入 API 不可达")
+    else:
+        print("远程写入 API (KB_REMOTE_URL): (未配置 → 本地文件模式)")
     print()
     if issues:
         print("[需配置] 以下项需处理后再入库：")

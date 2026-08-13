@@ -23,6 +23,8 @@ agent_created: true
 | DeepTutor 局域网地址 | `http://192.168.0.4:3782` | `DEEPTUTOR_LAN_URL` |
 | 默认署名 | `用户` | `KB_AUTHOR` |
 | 公网访问地址 | （未配置） | `KB_PUBLIC_URL` |
+| 远程写入 API | （未配置→本地文件模式） | `KB_REMOTE_URL` |
+| 写入 API 鉴权 token | （未配置→裸奔） | `KB_API_TOKEN` |
 
 变更路径前先用 `kb_ops.py remote` 确认 DeepTutor 在跑、vault 挂载正常。
 
@@ -151,6 +153,25 @@ python scripts/kb_ops.py config                     # 配置自检（vault/DeepT
 
 笔记名匹配不区分大小写，可省略 `.md` 后缀。
 
+## 远程写入模式（跨机器集中入库）
+
+默认 `kb_ops` 写本地 vault 文件（`KB_VAULT`）。设了 `KB_REMOTE_URL` 后，`add/update/link/search/list/show/backlinks/dedup` 全部走 HTTP 调远端 `vault_api`，实现**任何机器的 skill 都能写入服务器 vault**，且保留署名/去重/双链流程。
+
+### 服务器端（vault 所在机器）
+1. 设鉴权：`setx KB_API_TOKEN "<随机串>"`
+2. 启动写入 API：`python scripts/vault_api.py`（监听 3783，需能访问 vault 文件系统）
+3. 公网暴露 3783（frp/Cloudflare Tunnel），例如 frp 远程端口 10312
+
+### 客户端（其他龙虾）
+```
+setx KB_REMOTE_URL "http://<服务器公网地址>:10312"
+setx KB_API_TOKEN  "<与服务器相同的 token>"
+```
+之后 `kb_ops add ...` 自动经公网写入服务器 vault，`config` 自检会显示远程 API 状态。
+
+> 安全：`vault_api` 靠 `X-API-Token` 鉴权，务必设 `KB_API_TOKEN`。公网暴露建议再叠 IP 白名单。
+> 写入仍带完整 frontmatter（author/tags/source/status）+ 双链，与本地模式一致。
+
 ## 与 DeepTutor 联动
 
 vault 已被 DeepTutor 登记为 `obsidian-vault` 知识库（id `admin:kb:obsidian-vault`，type=obsidian，免索引）。写入 vault 的笔记，DeepTutor 下次对话即可读到——无需重建索引、无需 embedding。这是本 skill"对话中链接知识库"的远程侧实现。
@@ -159,5 +180,6 @@ vault 已被 DeepTutor 登记为 `obsidian-vault` 知识库（id `admin:kb:obsid
 
 - `references/note-template.md` — 笔记模板与 frontmatter 规范
 - `references/public-access.md` — 公网访问部署指南（Cloudflare Tunnel + Access）
-- `scripts/kb_ops.py` — vault 操作 CLI
+- `scripts/kb_ops.py` — vault 操作 CLI（本地/远程双模式）
+- `scripts/vault_api.py` — 远程写入 API 服务端（跑在 vault 所在机器）
 - `scripts/setup_cloudflare_tunnel.ps1` — 公网隧道一键部署脚本
