@@ -415,11 +415,22 @@ def cmd_organize(args):
     print(f"根目录散乱笔记 {len(root_notes)} 篇，归类建议：\n")
     moved = 0
     for p in root_notes:
+        # 跳过 Obsidian 默认笔记与 MOC 入口（留在根目录做入口）
+        try:
+            fm, _ = parse_frontmatter(p.read_text(encoding="utf-8"))
+        except Exception:
+            fm = {}
+        if p.stem == "欢迎" or "MOC" in p.stem or "MOC" in fm.get("tags", ""):
+            print(f"- {p.name}  →  (保留根目录)  [MOC/系统笔记]")
+            continue
         try:
             text = p.read_text(encoding="utf-8")
         except Exception:
             continue
-        cls = classify_text(p.stem + " " + text)
+        # 标题优先，标题未命中再看全文（减少内容噪声误归）
+        cls = classify_text(p.stem)
+        if cls["topic"] == "未分类":
+            cls = classify_text(p.stem + " " + text)
         target_dir = cls["dir"]
         print(f"- {p.name}  →  {target_dir or '(根目录)'}/  [{cls['topic']}]  tags:{','.join(cls['tags'])}" + (f"  MOC:[[{cls['moc']}]]" if cls["moc"] else ""))
         if args.apply and target_dir:
