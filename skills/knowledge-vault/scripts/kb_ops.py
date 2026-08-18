@@ -43,6 +43,46 @@ def now_iso():
     return datetime.datetime.now().strftime("%Y-%m-%dT%H:%M")
 
 
+# ── 自动归类体系（基于关键词规则评分；可在 references/classify-rules.md 调整）──
+CLASSIFY_RULES = [
+    {"topic": "技术部署", "dir": "技术类", "moc": "技术类-MOC", "tags": ["技术", "部署"],
+     "keywords": ["部署经验", "部署", "环境配置", "wsl", "docker", "安装", "启动", "配置"]},
+    {"topic": "数字人", "dir": "数字人", "moc": "数字人-MOC", "tags": ["数字人"],
+     "keywords": ["数字人", "avatar", "虚拟人", "虚拟形象", "digital human"]},
+    {"topic": "视频生成", "dir": "技术类/视频", "moc": "视频生成-MOC", "tags": ["技术", "视频生成"],
+     "keywords": ["视频生成", "文生图", "文生视频", "video", "diffusion", "tts", "图生视频", "选型"]},
+    {"topic": "金融投资", "dir": "金融类/金融案例", "moc": "投资研究体系", "tags": ["投资"],
+     "keywords": ["投资", "股票", "基金", "财报", "估值", "持仓", "护城河", "安全边际", "房产", "个税", "茅台", "价值投资"]},
+    {"topic": "传统文化", "dir": "文化类", "moc": "文化-MOC", "tags": ["文化"],
+     "keywords": ["中医", "易经", "八字", "命理", "调鼎集", "六十四卦", "辨证", "少阴"]},
+    {"topic": "工具方法", "dir": "工具", "moc": "工具箱", "tags": ["工具"],
+     "keywords": ["工具", "skill", "技能", "obsidian", "deeptutor", "提示词", "方法论", "知识库", "mcp"]},
+    {"topic": "运营", "dir": "运营", "moc": "运营-MOC", "tags": ["运营"],
+     "keywords": ["运营", "排期", "爬取", "视频号", "抖音", "读书号", "涨粉"]},
+    {"topic": "日志", "dir": "日志", "moc": "", "tags": ["日志"],
+     "keywords": ["日志", "日报", "周报", "复盘"]},
+]
+DEFAULT_CLASSIFY = {"topic": "未分类", "dir": "", "moc": "", "tags": ["未分类"]}
+
+
+def classify_text(text):
+    """按关键词归类：具体主题(数字人/视频/金融/文化/工具/运营/日志)优先，技术部署兜底。"""
+    t = (text or "").lower()
+    if not t.strip():
+        return dict(DEFAULT_CLASSIFY)
+    # 具体主题优先匹配（命中任一关键词即采用）
+    for rule in CLASSIFY_RULES:
+        if rule["topic"] == "技术部署":
+            continue
+        if any(kw.lower() in t for kw in rule["keywords"]):
+            return {"topic": rule["topic"], "dir": rule["dir"], "moc": rule["moc"], "tags": list(rule["tags"])}
+    # 兜底：技术部署（通用部署/配置类）
+    for rule in CLASSIFY_RULES:
+        if rule["topic"] == "技术部署" and any(kw.lower() in t for kw in rule["keywords"]):
+            return {"topic": rule["topic"], "dir": rule["dir"], "moc": rule["moc"], "tags": list(rule["tags"])}
+    return dict(DEFAULT_CLASSIFY)
+
+
 def slugify(s):
     return re.sub(r'[\\/:*?"<>|]', "", s).strip()
 
@@ -161,6 +201,16 @@ def cmd_show(args):
 
 
 def cmd_add(args):
+    # 自动归类：未指定 --dir 时，按标题+内容关键词决定目录/标签/挂MOC
+    if not args.dir:
+        cls = classify_text((args.title or "") + " " + (args.content or ""))
+        if cls["dir"]:
+            args.dir = cls["dir"]
+            if not args.tags:
+                args.tags = ",".join(cls["tags"])
+            if not args.links and cls["moc"]:
+                args.links = cls["moc"]
+            print(f"🏷 自动归类: {cls['topic']} → {cls['dir']}/  挂 [[{cls['moc'] or '无'}]]")
     if REMOTE_URL:
         res = remote_call("/add", {"title": args.title, "content": args.content, "tags": args.tags,
                                     "links": args.links, "dir": args.dir, "source": args.source,
@@ -343,6 +393,63 @@ def cmd_remote(args):
             print(f"[{label}] 不可达: {e}")
 
 
+def cmd_classify(args):
+    text = args.text
+    cls = classify_text(text)
+    print(f"输入: {text[:60]}{'...' if len(text)>60 else ''}")
+    print(f"归类: {cls['topic']}")
+    print(f"目录: {cls['dir'] or '(根目录)'}")
+    print(f"标签: {','.join(cls['tags'])}")
+    print(f"挂MOC: [[{cls['moc']}]]" if cls["moc"] else "挂MOC: (无)")
+
+
+def cmd_organize(args):
+    if REMOTE_URL:
+        print("organize 是服务器端文件操作，需在 vault 所在机器本地运行（不走远程）。"); return
+    if not VAULT.exists():
+        print(f"vault 不存在: {VAULT}"); return
+    root_notes = [p for p in VAULT.glob("*.md")]
+    if not root_notes:
+        print("根目录无散乱笔记。"); return
+    import shutil
+    print(f"根目录散乱笔记 {len(root_notes)} 篇，归类建议：\n")
+    moved = 0
+    for p in root_notes:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        cls = classify_text(p.stem + " " + text)
+        target_dir = cls["dir"]
+        print(f"- {p.name}  →  {target_dir or '(根目录)'}/  [{cls['topic']}]  tags:{','.join(cls['tags'])}" + (f"  MOC:[[{cls['moc']}]]" if cls["moc"] else ""))
+        if args.apply and target_dir:
+            new_dir = VAULT / target_dir
+            new_dir.mkdir(parents=True, exist_ok=True)
+            dst = new_dir / p.name
+            if dst.exists():
+                print(f"    跳过(目标已存在): {dst}"); continue
+            shutil.move(str(p), str(dst))
+            # 补 tags / MOC 双链
+            try:
+                t = dst.read_text(encoding="utf-8")
+                fm, body = parse_frontmatter(t)
+                if not fm.get("tags") or fm.get("tags") == "[]":
+                    fm["tags"] = "[" + ",".join(cls["tags"]) + "]"
+                if cls["moc"] and f"[[{cls['moc']}]]" not in t:
+                    if "## 相关" in body:
+                        body = body.replace("## 相关", f"## 相关\n- [[{cls['moc']}]]", 1)
+                    else:
+                        body = body.rstrip() + f"\n\n## 相关\n- [[{cls['moc']}]]\n"
+                dst.write_text(build_frontmatter(fm) + "\n\n" + body, encoding="utf-8")
+            except Exception as e:
+                print(f"    补元数据失败: {e}")
+            moved += 1
+    if args.apply:
+        print(f"\n✅ 已移动 {moved} 篇到对应目录并补标签/MOC双链")
+    else:
+        print(f"\n(预览模式，加 --apply 实际移动并补标签/MOC双链)")
+
+
 def cmd_config(args):
     import urllib.request
     print("=== 赛博大脑 配置自检 ===\n")
@@ -429,11 +536,15 @@ def main():
     sub.add_parser("dedup").add_argument("query")
     sub.add_parser("remote")
     sub.add_parser("config")
+    sub.add_parser("classify").add_argument("text")
+    o = sub.add_parser("organize")
+    o.add_argument("--apply", action="store_true")
     args = ap.parse_args()
     {
         "list": cmd_list, "search": cmd_search, "show": cmd_show, "add": cmd_add,
         "update": cmd_update, "backlinks": cmd_backlinks, "link": cmd_link,
         "dedup": cmd_dedup, "remote": cmd_remote, "config": cmd_config,
+        "classify": cmd_classify, "organize": cmd_organize,
     }[args.cmd](args)
 
 

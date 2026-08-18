@@ -63,10 +63,11 @@ python scripts/kb_ops.py dedup "<拟用标题>"
 
 ### 4. 整理 Compose
 按 `references/note-template.md` 的规范生成笔记：
+- **自动归类**：`kb_ops add` 无 `--dir` 时自动按标题+内容关键词决定目录/标签/挂哪个 MOC（规则见 `references/classify-rules.md`，可自改）。归错时用 `--dir` 覆写
 - YAML frontmatter：`title / created / updated / author / tags / source / status`（`author` 必填，见「署名与追溯」）
 - 正文：先一句话定义/结论，再展开，末尾「相关」段放 `[[]]` 双链
 - 标签：1-3 个，复用已有标签优先
-- 双链：每个新条目至少链 1 个相关旧条目（MOC 或同主题笔记）
+- 双链：每个新条目至少链 1 个相关旧条目（自动归类会挂到主题 MOC）
 
 ### 5. 写入/升级 Write/Upgrade
 - 新建：用 Write 工具写到 `<vault>/<主题目录>/<标题>.md`；或 `python scripts/kb_ops.py add ...`
@@ -148,7 +149,9 @@ python scripts/kb_ops.py backlinks "<笔记名>"       # 列出谁链接了它
 python scripts/kb_ops.py link "<源>" "<目标>"       # 在源笔记补一条 [[目标]] 双链
 python scripts/kb_ops.py dedup "<关键词>"           # 找潜在重复条目
 python scripts/kb_ops.py remote                     # 打印 DeepTutor 地址并做健康检查
-python scripts/kb_ops.py config                     # 配置自检（vault/DeepTutor/公网/署名），缺失项提醒
+python scripts/kb_ops.py config                     # 配置自检（vault/DeepTutor/公网/署名/远程API），缺失项提醒
+python scripts/kb_ops.py classify "<文本>"           # 预览自动归类建议（目录/标签/MOC）
+python scripts/kb_ops.py organize                   # 扫描根目录散乱笔记，预览归类建议（加 --apply 实际移动+补标签/MOC双链）
 ```
 
 笔记名匹配不区分大小写，可省略 `.md` 后缀。
@@ -179,7 +182,8 @@ vault 已被 DeepTutor 登记为 `obsidian-vault` 知识库（id `admin:kb:obsid
 ## 参考资源
 
 - `references/note-template.md` — 笔记模板与 frontmatter 规范
-- `references/public-access.md` — 公网访问部署指南（Cloudflare Tunnel + Access）
+- `references/classify-rules.md` — 自动归类体系（主题/目录/MOC/关键词，可自改）
+- `references/public-access.md` — 公网访问部署指南（Cloudflare Tunnel + Access / frp）
 - `scripts/kb_ops.py` — vault 操作 CLI（本地/远程双模式）
 - `scripts/vault_api.py` — 远程写入 API 服务端（跑在 vault 所在机器）
 - `scripts/setup_cloudflare_tunnel.ps1` — 公网隧道一键部署脚本
