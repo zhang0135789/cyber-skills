@@ -1,5 +1,7 @@
 # 🧠 赛博大脑 · WorkBuddy Skills
 
+> 当前版本 **v0.0.1**（入库工作流 / 署名追溯 / 远程写入 / 自动归类 / 公网访问）
+
 > 把 WorkBuddy 对话变成你的外置赛博大脑——知识自动沉淀、双链成网、远程访问、AI 增强。
 
 一组 [WorkBuddy](https://www.workbuddy.cn) 技能包。首个核心技能 **赛博大脑（knowledge-vault）** 让你的"对话记忆"不再聊完就散：自动把对话里的核心知识、习惯、技能、资料整理成 Obsidian 双链笔记，经 DeepTutor 实现远程访问与 AI 检索，每条带署名追溯。

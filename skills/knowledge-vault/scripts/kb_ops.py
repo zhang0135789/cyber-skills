@@ -457,6 +457,36 @@ def cmd_organize(args):
             moved += 1
     if args.apply:
         print(f"\n✅ 已移动 {moved} 篇到对应目录并补标签/MOC双链")
+        # 扫描全库 MOC 链接 + 体系内 MOC，补建缺失的（根目录入口）
+        known = {r["moc"] for r in CLASSIFY_RULES if r["moc"]}
+        linked = set(known)
+        for note in all_notes():
+            try:
+                txt = note.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            for m in re.findall(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", txt):
+                nm = m.strip()
+                if nm in known or "MOC" in nm:
+                    linked.add(nm)
+        created = []
+        for moc in sorted(linked):
+            if find_note(moc):
+                continue
+            moc_path = VAULT / f"{slugify(moc)}.md"
+            meta = {
+                "title": moc, "created": now_iso(), "updated": now_iso(),
+                "author": os.environ.get("KB_AUTHOR", "用户"), "tags": "[MOC]",
+                "source": "organize自动创建", "status": "active",
+            }
+            body = (f"# {moc}\n\n（自动创建的知识库入口）\n\n"
+                    f"> 指向本 MOC 的笔记会自动出现在右侧反向链接面板。\n")
+            moc_path.write_text(build_frontmatter(meta) + "\n\n" + body, encoding="utf-8")
+            created.append(moc)
+        if created:
+            print(f"🆕 自动补建缺失 MOC {len(created)} 个: {', '.join(created)}（根目录）")
+        else:
+            print(f"✅ 体系内 MOC 均已存在（{len(known)} 个）")
     else:
         print(f"\n(预览模式，加 --apply 实际移动并补标签/MOC双链)")
 
