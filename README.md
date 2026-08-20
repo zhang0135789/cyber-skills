@@ -41,6 +41,14 @@ flowchart LR
 
 > 精髓：DeepTutor 的 `obsidian` 类型知识库是"指针型"——不建向量索引、不需要 embedding，直接就地读写 vault 文件。笔记永远留在 Obsidian，AI 只是读它。
 
+## 知识图谱（成果展示）
+
+真实 vault 用 Obsidian Graph 渲染：自动归类后 7 个 MOC（绿点）作为主题中心，辐射 50+ 篇笔记（8 主题：数字人/视频生成/金融/技术/文化/工具/运营/日志），`[[双链]]` 自动汇成知识网络。
+
+![Knowledge Graph](docs/knowledge-graph.png)
+
+> 归类前根目录 40 篇散乱笔记 → 一条 `kb_ops organize --apply` 全部归档、分类、补双链、补 MOC。
+
 ## Skills 一览
 
 | 技能 | 定位 | 状态 |
