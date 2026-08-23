@@ -491,6 +491,48 @@ def cmd_organize(args):
         print(f"\n(预览模式，加 --apply 实际移动并补标签/MOC双链)")
 
 
+def _find_defuddle():
+    import shutil
+    cands = [
+        shutil.which("defuddle"),
+        r"C:\Users\Administrator\.workbuddy\binaries\node\versions\22.22.2\defuddle.cmd",
+        r"C:\Program Files\nodejs\defuddle.cmd",
+        os.path.expandvars(r"%APPDATA%\npm\defuddle.cmd"),
+    ]
+    for c in cands:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def cmd_fetch(args):
+    """用 defuddle CLI 提取网页干净 markdown（网页资料入库用）。"""
+    import subprocess
+    url = args.url
+    defuddle = _find_defuddle()
+    if not defuddle:
+        print("(defuddle 未安装：npm install -g defuddle，或改用 WebFetch)")
+        return
+    try:
+        if defuddle.lower().endswith(".cmd") or defuddle.lower().endswith(".bat"):
+            r = subprocess.run(["cmd.exe", "/c", defuddle, "parse", url, "--md"],
+                               capture_output=True, text=True, timeout=90)
+        else:
+            r = subprocess.run([defuddle, "parse", url, "--md"],
+                               capture_output=True, text=True, timeout=90)
+        md = r.stdout
+        if not md.strip():
+            md = f"(defuddle 无输出: {(r.stderr or '未知')[:300]})"
+    except Exception as e:
+        md = f"(defuddle 失败: {e})"
+    if args.save:
+        p = VAULT / f"{slugify(args.save)}.md"
+        p.write_text(md, encoding="utf-8")
+        print(f"✅ 已存: {p.relative_to(VAULT)}")
+    else:
+        print(md)
+
+
 def cmd_config(args):
     import urllib.request
     print("=== 赛博大脑 配置自检 ===\n")
@@ -580,12 +622,15 @@ def main():
     sub.add_parser("classify").add_argument("text")
     o = sub.add_parser("organize")
     o.add_argument("--apply", action="store_true")
+    f = sub.add_parser("fetch")
+    f.add_argument("url")
+    f.add_argument("--save")
     args = ap.parse_args()
     {
         "list": cmd_list, "search": cmd_search, "show": cmd_show, "add": cmd_add,
         "update": cmd_update, "backlinks": cmd_backlinks, "link": cmd_link,
         "dedup": cmd_dedup, "remote": cmd_remote, "config": cmd_config,
-        "classify": cmd_classify, "organize": cmd_organize,
+        "classify": cmd_classify, "organize": cmd_organize, "fetch": cmd_fetch,
     }[args.cmd](args)
 
 

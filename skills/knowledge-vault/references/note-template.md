@@ -1,5 +1,7 @@
 # 知识库笔记模板与规范
 
+> Obsidian 特有语法（wikilink/embed/callout/property 等）见 `references/obsidian-syntax.md`（吸收自 Obsidian 官方 agent skills），写笔记时按该规范保证渲染正确。
+
 ## 标准笔记结构
 
 ```markdown
@@ -16,6 +18,9 @@ status: active
 # 笔记标题
 
 一句话定义或结论（让读者 3 秒抓到核心）。
+
+> [!tip] 核心要点
+> 关键结论用 callout 高亮，方便扫读。
 
 ## 展开
 正文内容。用 `[[双链]]` 关联其他笔记，用 `#标签` 辅助归类。

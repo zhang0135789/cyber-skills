@@ -1,7 +1,7 @@
 ---
 name: knowledge-vault
-version: 0.0.1
-description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验时触发。
+version: 0.1.0
+description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验，或用户发来 URL/网页资料（走 defuddle 提纯入库）时触发。
 agent_created: true
 ---
 
@@ -66,9 +66,16 @@ python scripts/kb_ops.py dedup "<拟用标题>"
 按 `references/note-template.md` 的规范生成笔记：
 - **自动归类**：`kb_ops add` 无 `--dir` 时自动按标题+内容关键词决定目录/标签/挂哪个 MOC（规则见 `references/classify-rules.md`，可自改）。归错时用 `--dir` 覆写
 - YAML frontmatter：`title / created / updated / author / tags / source / status`（`author` 必填，见「署名与追溯」）
-- 正文：先一句话定义/结论，再展开，末尾「相关」段放 `[[]]` 双链
+- **Obsidian 语法**：wikilink/embed/callout/property 等按 `references/obsidian-syntax.md` 写（吸收自 Obsidian 官方 agent skills，保证渲染正确）
+- 正文：先一句话定义/结论，再展开，末尾「相关」段放 `[[]]` 双链；关键结论可用 `> [!tip]` callout 高亮
 - 标签：1-3 个，复用已有标签优先
 - 双链：每个新条目至少链 1 个相关旧条目（自动归类会挂到主题 MOC）
+
+### 4.5 网页资料入库（URL 触发）
+用户发来 URL / 网页资料时走此分支：
+1. `python scripts/kb_ops.py fetch "<url>"` 用 defuddle 提纯网页（未装 defuddle 则退用 WebFetch；`.md` 结尾 URL 直接 WebFetch）
+2. 与用户确认拟建标题/归类 → 按步骤 4 整理，frontmatter `source` 填原 URL
+3. 细节与注意见 `references/web-extraction.md`
 
 ### 5. 写入/升级 Write/Upgrade
 - 新建：用 Write 工具写到 `<vault>/<主题目录>/<标题>.md`；或 `python scripts/kb_ops.py add ...`
@@ -153,6 +160,7 @@ python scripts/kb_ops.py remote                     # 打印 DeepTutor 地址并
 python scripts/kb_ops.py config                     # 配置自检（vault/DeepTutor/公网/署名/远程API），缺失项提醒
 python scripts/kb_ops.py classify "<文本>"           # 预览自动归类建议（目录/标签/MOC）
 python scripts/kb_ops.py organize                   # 扫描根目录散乱笔记，预览归类建议（加 --apply 实际移动+补标签/MOC双链）
+python scripts/kb_ops.py fetch "<url>"              # 用 defuddle 提取网页干净 markdown（网页资料入库）
 ```
 
 笔记名匹配不区分大小写，可省略 `.md` 后缀。
@@ -183,7 +191,9 @@ vault 已被 DeepTutor 登记为 `obsidian-vault` 知识库（id `admin:kb:obsid
 ## 参考资源
 
 - `references/note-template.md` — 笔记模板与 frontmatter 规范
+- `references/obsidian-syntax.md` — Obsidian 语法速查（wikilink/embed/callout/property，吸收官方）
 - `references/classify-rules.md` — 自动归类体系（主题/目录/MOC/关键词，可自改）
+- `references/web-extraction.md` — 网页资料提取入库（defuddle 用法）
 - `references/public-access.md` — 公网访问部署指南（Cloudflare Tunnel + Access / frp）
 - `scripts/kb_ops.py` — vault 操作 CLI（本地/远程双模式）
 - `scripts/vault_api.py` — 远程写入 API 服务端（跑在 vault 所在机器）
