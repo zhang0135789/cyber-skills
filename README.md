@@ -81,6 +81,22 @@ cp -r cyber-skills/skills/knowledge-vault ~/.workbuddy/skills/knowledge-vault
 
 > 用户级 `~/.workbuddy/skills/<技能名>/` 全项目通用；项目级 `<项目>/.workbuddy/skills/<技能名>/` 仅团队共享。
 
+### 升级（拉最新版）
+
+一键升级脚本（仓库根目录 `update-skill.ps1` / `update-skill.sh`）：
+
+```powershell
+# Windows（一条命令，远程拉取并覆盖安装）
+irm https://raw.githubusercontent.com/zhang0135789/cyber-skills/main/update-skill.ps1 | iex
+```
+
+```bash
+# macOS / Linux
+curl -sL https://raw.githubusercontent.com/zhang0135789/cyber-skills/main/update-skill.sh | bash
+```
+
+或手动：`git pull` 后把 `skills/knowledge-vault/` 覆盖到 `~/.workbuddy/skills/knowledge-vault/`，重开会话生效。
+
 可选环境变量（均有默认值）：
 
 | 变量 | 默认 | 说明 |
