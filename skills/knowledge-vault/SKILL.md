@@ -1,7 +1,7 @@
 ---
 name: knowledge-vault
 version: 0.1.0
-description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验，或用户发来 URL/网页资料（走 defuddle 提纯入库）时触发。
+description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑/升级赛博大脑/升级skill"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验，或用户发来 URL/网页资料（走 defuddle 提纯入库）时触发。
 agent_created: true
 ---
 
@@ -161,6 +161,7 @@ python scripts/kb_ops.py config                     # 配置自检（vault/DeepT
 python scripts/kb_ops.py classify "<文本>"           # 预览自动归类建议（目录/标签/MOC）
 python scripts/kb_ops.py organize                   # 扫描根目录散乱笔记，预览归类建议（加 --apply 实际移动+补标签/MOC双链）
 python scripts/kb_ops.py fetch "<url>"              # 用 defuddle 提取网页干净 markdown（网页资料入库）
+python scripts/kb_ops.py upgrade                    # 自升级：从 GitHub 拉最新版覆盖本 skill
 ```
 
 笔记名匹配不区分大小写，可省略 `.md` 后缀。
@@ -183,6 +184,13 @@ setx KB_API_TOKEN  "<与服务器相同的 token>"
 
 > 安全：`vault_api` 靠 `X-API-Token` 鉴权，务必设 `KB_API_TOKEN`。公网暴露建议再叠 IP 白名单。
 > 写入仍带完整 frontmatter（author/tags/source/status）+ 双链，与本地模式一致。
+
+## 自升级
+
+用户说「升级赛博大脑 / 升级 skill」时，执行 `python scripts/kb_ops.py upgrade`：
+从 GitHub 拉取最新版（默认 `https://github.com/zhang0135789/cyber-skills.git`）覆盖本 skill 目录。
+- 完成后提示：重开 WorkBuddy 会话生效；本地对 skill 的手动改动会被覆盖（建议先备份）
+- 可选：`upgrade --repo <地址> --skill <名称>` 指定来源
 
 ## 与 DeepTutor 联动
 

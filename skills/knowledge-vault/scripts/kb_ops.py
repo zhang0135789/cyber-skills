@@ -533,6 +533,46 @@ def cmd_fetch(args):
         print(md)
 
 
+def cmd_upgrade(args):
+    """自升级：从 GitHub 拉取最新版覆盖本 skill（用户说'升级赛博大脑'时执行）。"""
+    import subprocess
+    import tempfile
+    import shutil
+    repo = args.repo or "https://github.com/zhang0135789/cyber-skills.git"
+    skill = args.skill or "knowledge-vault"
+    dest = Path(__file__).resolve().parent.parent  # 本 skill 根目录
+    tmp = Path(tempfile.mkdtemp(prefix="cyber-skills-"))
+    try:
+        print(f"==> 拉取最新代码: {repo}")
+        r = subprocess.run(["git", "clone", "--depth", "1", repo, str(tmp)],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            print(f"(git clone 失败: {(r.stderr or '')[:300]})")
+            return
+        src = tmp / "skills" / skill
+        if not src.exists():
+            print(f"(仓库里没找到 skills/{skill})")
+            return
+        # 清空本 skill（保留 .git/__pycache__），再覆盖
+        for f in dest.iterdir():
+            if f.name in (".git", "__pycache__"):
+                continue
+            if f.is_dir():
+                shutil.rmtree(f, ignore_errors=True)
+            else:
+                f.unlink(missing_ok=True)
+        for f in src.iterdir():
+            if f.is_dir():
+                shutil.copytree(f, dest / f.name, dirs_exist_ok=True)
+            else:
+                shutil.copy2(f, dest / f.name)
+        print(f"✅ 已升级 {skill} 到最新版: {dest}")
+        print("   重开 WorkBuddy 会话后生效（新功能/新命令）")
+        print("   提示：本地对 skill 的手动改动会被仓库版覆盖，建议先备份")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def cmd_config(args):
     import urllib.request
     print("=== 赛博大脑 配置自检 ===\n")
@@ -625,12 +665,16 @@ def main():
     f = sub.add_parser("fetch")
     f.add_argument("url")
     f.add_argument("--save")
+    g = sub.add_parser("upgrade")
+    g.add_argument("--repo")
+    g.add_argument("--skill")
     args = ap.parse_args()
     {
         "list": cmd_list, "search": cmd_search, "show": cmd_show, "add": cmd_add,
         "update": cmd_update, "backlinks": cmd_backlinks, "link": cmd_link,
         "dedup": cmd_dedup, "remote": cmd_remote, "config": cmd_config,
         "classify": cmd_classify, "organize": cmd_organize, "fetch": cmd_fetch,
+        "upgrade": cmd_upgrade,
     }[args.cmd](args)
 
 
