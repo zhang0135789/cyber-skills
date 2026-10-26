@@ -55,6 +55,7 @@ flowchart LR
 |------|------|------|
 | [赛博大脑 (knowledge-vault)](./skills/knowledge-vault) | 对话↔Obsidian vault↔DeepTutor，6步入库 + 署名追溯 | ✅ 可用 |
 | [投资研究 (investment-research)](./skills/investment-research) | 巴菲特/芒格/段永平/李录四大师投研，强制结论 + 反偏见 + 金融严谨性 | ✅ 可用 |
+| [语音合成 (omnivoice-tts)](./skills/omnivoice-tts) | 本地 TTS + 音色克隆（docker :7842），SRT 时间轴批量解说轨，配音产线 | ✅ 可用 |
 
 > 新技能会持续加到 `skills/` 下，star 一下不错过。
 
