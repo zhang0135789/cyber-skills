@@ -1,6 +1,6 @@
 ---
 name: knowledge-vault
-version: 0.1.1
+version: 0.2.0
 description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑/升级赛博大脑/升级skill"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验，或用户发来 URL/网页资料（走 defuddle 提纯入库）时触发。
 agent_created: true
 ---
@@ -157,7 +157,8 @@ python scripts/kb_ops.py backlinks "<笔记名>"       # 列出谁链接了它
 python scripts/kb_ops.py link "<源>" "<目标>"       # 在源笔记补一条 [[目标]] 双链
 python scripts/kb_ops.py dedup "<关键词>"           # 找潜在重复条目
 python scripts/kb_ops.py remote                     # 打印 DeepTutor 地址并做健康检查
-python scripts/kb_ops.py config                     # 配置自检（vault/DeepTutor/公网/署名/远程API），缺失项提醒
+python scripts/kb_ops.py config                     # 配置自检（含远程写链路探测，--no-write 跳过）
+python scripts/kb_ops.py probe                      # 写链路探测：验证 vault 可写（远程 API 或本地直写）
 python scripts/kb_ops.py classify "<文本>"           # 预览自动归类建议（目录/标签/MOC）
 python scripts/kb_ops.py organize                   # 扫描根目录散乱笔记，预览归类建议（加 --apply 实际移动+补标签/MOC双链）
 python scripts/kb_ops.py fetch "<url>"              # 用 defuddle 提取网页干净 markdown（网页资料入库）
@@ -170,10 +171,19 @@ python scripts/kb_ops.py upgrade                    # 自升级：从 GitHub 拉
 
 默认 `kb_ops` 写本地 vault 文件（`KB_VAULT`）。设了 `KB_REMOTE_URL` 后，`add/update/link/search/list/show/backlinks/dedup` 全部走 HTTP 调远端 `vault_api`，实现**任何机器的 skill 都能写入服务器 vault**，且保留署名/去重/双链流程。
 
-### 服务器端（vault 所在机器）
-1. 设鉴权：`setx KB_API_TOKEN "<随机串>"`
-2. 启动写入 API：`python scripts/vault_api.py`（监听 3783，需能访问 vault 文件系统）
+### 服务器端（vault 所在机器，Docker 部署）
+1. 设鉴权：`setx KB_API_TOKEN "<随机串>"`（服务器侧）
+2. 用 `deploy/vault-api.compose.yaml` 部署容器（监听 3783，bind 挂载 vault 与 scripts/vault_api.py）：
+   ```
+   cd skills/knowledge-vault/deploy
+   docker compose -f vault-api.compose.yaml up -d
+   ```
 3. 公网暴露 3783（frp/Cloudflare Tunnel），例如 frp 远程端口 10312
+
+**关键口径（Errno 13 教训）**：
+- compose 中 `user: "1000:1000"` 必须与 vault 文件属主一致——Docker Desktop virtiofs 挂载严格按 POSIX 权限校验，且 `cap_drop: [ALL]` 下容器 root 也无法 chmod/chown 他属主文件。换机器部署时先用 `ls -ln` 看文件属主，再对齐 uid。
+- 服务"健康"≠"可写"。部署后或怀疑权限变化时执行 `python scripts/kb_ops.py probe`（config 自检也会自动探测写链路）。
+- 每次覆盖写之前 API 会自动把原文快照到 `<vault>/.kb_versions/<笔记名>/`（每条保留最近 10 份），误改可从那里找回。
 
 ### 客户端（其他龙虾）
 ```
@@ -217,4 +227,5 @@ vault 已被 DeepTutor 登记为 `obsidian-vault` 知识库（id `admin:kb:obsid
 - `references/public-access.md` — 公网访问部署指南（Cloudflare Tunnel + Access / frp）
 - `scripts/kb_ops.py` — vault 操作 CLI（本地/远程双模式）
 - `scripts/vault_api.py` — 远程写入 API 服务端（跑在 vault 所在机器）
+- `deploy/vault-api.compose.yaml` — vault_api Docker 部署编排（uid 对齐口径见文件内注释）
 - `scripts/setup_cloudflare_tunnel.ps1` — 公网隧道一键部署脚本

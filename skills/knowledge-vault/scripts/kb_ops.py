@@ -19,9 +19,12 @@ REMOTE_URL = os.environ.get("KB_REMOTE_URL", "").rstrip("/")
 REMOTE_TOKEN = os.environ.get("KB_API_TOKEN", "")
 
 
-def remote_call(path, params=None, method="GET"):
-    """经 HTTP 调用 vault_api（远程写入模式）。设了 KB_REMOTE_URL 即启用。"""
-    import urllib.request, urllib.parse, json as _json
+def remote_call(path, params=None, method="GET", retries=1):
+    """经 HTTP 调用 vault_api（远程写入模式）。设了 KB_REMOTE_URL 即启用。
+
+    网络类错误自动重试一次，返回值带 network: true 便于区分网络问题与业务错误。
+    """
+    import urllib.request, urllib.parse, urllib.error, json as _json, time
     url = REMOTE_URL + path
     headers = {"Content-Type": "application/json"}
     if REMOTE_TOKEN:
@@ -32,11 +35,22 @@ def remote_call(path, params=None, method="GET"):
     elif method == "POST":
         data = _json.dumps(params or {}, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        r = urllib.request.urlopen(req, timeout=15)
-        return _json.loads(r.read().decode("utf-8"))
-    except Exception as e:
-        return {"error": str(e)}
+    last = None
+    for attempt in range(retries + 1):
+        try:
+            r = urllib.request.urlopen(req, timeout=20)
+            return _json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                return _json.loads(e.read().decode("utf-8"))
+            except Exception:
+                return {"error": f"HTTP {e.code}"}
+        except Exception as e:
+            last = e
+            if attempt < retries:
+                time.sleep(1)
+                continue
+            return {"error": str(e), "network": True}
 
 
 def now_iso():
@@ -90,18 +104,46 @@ def slugify(s):
 def all_notes():
     if not VAULT.exists():
         return []
-    return sorted(VAULT.rglob("*.md"))
+    # 排除点开头目录（.obsidian/.kb_versions 等系统目录）
+    return sorted(
+        p for p in VAULT.rglob("*.md")
+        if not any(part.startswith(".") for part in p.relative_to(VAULT).parts)
+    )
+
+
+class AmbiguousNote(Exception):
+    """笔记名子串匹配命中多篇时抛出，携带候选列表。"""
+
+    def __init__(self, candidates):
+        self.candidates = candidates
+        super().__init__("ambiguous note name")
 
 
 def find_note(name):
     name_l = name.lower().replace(".md", "").strip()
-    for p in all_notes():
-        if p.stem.lower() == name_l:
-            return p
-    for p in all_notes():
-        if name_l in p.stem.lower():
-            return p
+    exact = [p for p in all_notes() if p.stem.lower() == name_l]
+    if exact:
+        return exact[0]
+    subs = [p for p in all_notes() if name_l and name_l in p.stem.lower()]
+    if len(subs) == 1:
+        return subs[0]
+    if len(subs) > 1:
+        raise AmbiguousNote([str(p.relative_to(VAULT)) for p in subs])
     return None
+
+
+def find_note_or_candidates(name):
+    """返回 (note, None) 或 (None, candidates)，供各命令统一处理歧义。"""
+    try:
+        return find_note(name), None
+    except AmbiguousNote as e:
+        return None, e.candidates
+
+
+def print_ambiguous(name, candidates):
+    print(f"(歧义) 多篇笔记匹配 '{name}'，请改用完整标题：")
+    for c in candidates:
+        print(f"  - {c}")
 
 
 def parse_frontmatter(text):
@@ -129,6 +171,21 @@ def refresh_updated(text):
     fm, body = parse_frontmatter(text)
     fm["updated"] = now_iso()
     return build_frontmatter(fm) + "\n\n" + body
+
+
+def backup_note(p):
+    """本地模式覆盖写之前快照原文到 <vault>/.kb_versions/<笔记名>/，保留最近 10 份。"""
+    import shutil
+    try:
+        vdir = VAULT / ".kb_versions" / p.stem
+        vdir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(p, vdir / f"{ts}.md")
+        versions = sorted(vdir.glob("*.md"))
+        for old in versions[:-10]:
+            old.unlink(missing_ok=True)
+    except Exception:
+        pass  # 备份失败不阻断主流程
 
 
 def cmd_list(args):
@@ -190,10 +247,17 @@ def cmd_show(args):
     if REMOTE_URL:
         res = remote_call("/show", {"name": args.name})
         if isinstance(res, dict) and res.get("error"):
-            print("远程错误/未找到:", res["error"]); return
+            if res.get("error") == "ambiguous":
+                print_ambiguous(args.name, res.get("candidates", []))
+            else:
+                print("远程错误/未找到:", res["error"])
+            return
         print(res.get("content", ""))
         return
-    p = find_note(args.name)
+    p, candidates = find_note_or_candidates(args.name)
+    if candidates:
+        print_ambiguous(args.name, candidates)
+        sys.exit(1)
     if not p:
         print(f"(未找到) {args.name}")
         sys.exit(1)
@@ -258,14 +322,24 @@ def cmd_update(args):
         res = remote_call("/update", {"name": args.name, "content": args.content,
                                        "append": args.append, "by": args.by}, "POST")
         if isinstance(res, dict) and res.get("error"):
-            print("远程错误:", res["error"]); return
+            if res.get("error") == "ambiguous":
+                print_ambiguous(args.name, res.get("candidates", []))
+            else:
+                print("远程错误:", res["error"])
+                if res.get("hint"):
+                    print(f"提示: {res['hint']}")
+            return
         print(f"✅ [远程] 已更新: {args.name}  updated={res.get('updated')}  contributors={res.get('contributors','')}")
         return
-    p = find_note(args.name)
+    p, candidates = find_note_or_candidates(args.name)
+    if candidates:
+        print_ambiguous(args.name, candidates)
+        sys.exit(1)
     if not p:
         print(f"(未找到) {args.name}")
         sys.exit(1)
     text = p.read_text(encoding="utf-8")
+    backup_note(p)
     fm, body = parse_frontmatter(text)
     if args.content:
         body = args.content
@@ -287,7 +361,11 @@ def cmd_backlinks(args):
     if REMOTE_URL:
         res = remote_call("/backlinks", {"name": args.name})
         if isinstance(res, dict) and res.get("error"):
-            print("远程错误:", res["error"]); return
+            if res.get("error") == "ambiguous":
+                print_ambiguous(args.name, res.get("candidates", []))
+            else:
+                print("远程错误:", res["error"])
+            return
         found = res.get("backlinks", [])
         if found:
             print(f"[远程] 反向链接到《{res.get('note')}》({len(found)}):")
@@ -296,7 +374,10 @@ def cmd_backlinks(args):
         else:
             print(f"[远程] 《{res.get('note')}》无反向链接")
         return
-    target = find_note(args.name)
+    target, candidates = find_note_or_candidates(args.name)
+    if candidates:
+        print_ambiguous(args.name, candidates)
+        sys.exit(1)
     if not target:
         print(f"(未找到目标笔记) {args.name}")
         sys.exit(1)
@@ -324,13 +405,25 @@ def cmd_link(args):
     if REMOTE_URL:
         res = remote_call("/link", {"src": args.src, "dst": args.dst}, "POST")
         if isinstance(res, dict) and res.get("error"):
-            print("远程错误:", res["error"]); return
+            if res.get("error") == "ambiguous":
+                print_ambiguous(res.get("field", "src") == "dst" and args.dst or args.src, res.get("candidates", []))
+            else:
+                print("远程错误:", res["error"])
+                if res.get("hint"):
+                    print(f"提示: {res['hint']}")
+            return
         print(f"✅ [远程] 已加双链: {args.src} -> [[{args.dst}]]  ({res.get('status')})")
         return
-    src = find_note(args.src)
-    dst = find_note(args.dst)
+    src, candidates = find_note_or_candidates(args.src)
+    if candidates:
+        print_ambiguous(args.src, candidates)
+        sys.exit(1)
     if not src:
         print(f"(未找到源) {args.src}")
+        sys.exit(1)
+    dst, candidates = find_note_or_candidates(args.dst)
+    if candidates:
+        print_ambiguous(args.dst, candidates)
         sys.exit(1)
     if not dst:
         print(f"(未找到目标) {args.dst}")
@@ -340,6 +433,7 @@ def cmd_link(args):
     if link_line in text:
         print(f"(已存在该链接) {src.stem} -> {dst.stem}")
         return
+    backup_note(src)
     if "## 相关" in text:
         text = text.replace("## 相关", f"## 相关\n{link_line}", 1)
     else:
@@ -573,6 +667,44 @@ def cmd_upgrade(args):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def cmd_probe(args):
+    """写链路探测：对 _perm_probe.md 追加探针记录并验证，验证服务可写性（远程/本地）。"""
+    ts = now_iso()
+    who = os.environ.get("KB_AUTHOR", "probe")
+    append_payload = f"probe {ts} by {who}"
+    if REMOTE_URL:
+        res = remote_call("/update", {"name": "_perm_probe", "append": append_payload, "by": "probe"}, "POST")
+        if isinstance(res, dict) and res.get("error") == "not found":
+            # 探针文件不存在则自建后重试
+            add_res = remote_call("/add", {"title": "_perm_probe", "dir": "",
+                                           "content": "# 写链路探针\n\n自动创建，仅记录 probe 测试记录。\n",
+                                           "author": "probe"}, "POST")
+            if isinstance(add_res, dict) and add_res.get("status") == "created":
+                res = remote_call("/update", {"name": "_perm_probe", "append": append_payload, "by": "probe"}, "POST")
+        if isinstance(res, dict) and res.get("status") == "updated":
+            print(f"[OK] 写链路正常 ({REMOTE_URL})  updated={res.get('updated')}")
+            return
+        if isinstance(res, dict) and res.get("error") == "ambiguous":
+            print("[FAIL] 探针文件名歧义（vault 内存在多个 _perm_probe*），请清理后重试")
+            for c in res.get("candidates", []):
+                print(f"  - {c}")
+            sys.exit(1)
+        print(f"[FAIL] 写链路异常: {res}")
+        if isinstance(res, dict) and res.get("hint"):
+            print(f"提示: {res['hint']}")
+        elif isinstance(res, dict) and res.get("network"):
+            print("提示: 网络类错误，检查 KB_REMOTE_URL / frp 隧道 / vault_api 是否在跑")
+        sys.exit(1)
+    target = VAULT / "_perm_probe.md"
+    try:
+        with open(target, "a", encoding="utf-8") as f:
+            f.write(f"- probe {ts} by {who}\n")
+        print(f"[OK] 写链路正常（本地直写）: {target.relative_to(VAULT)}")
+    except Exception as e:
+        print(f"[FAIL] 本地写入失败: {e}")
+        sys.exit(1)
+
+
 def cmd_config(args):
     import urllib.request
     print("=== 赛博大脑 配置自检 ===\n")
@@ -613,7 +745,29 @@ def cmd_config(args):
         try:
             h = remote_call("/health")
             if isinstance(h, dict) and h.get("status") == "ok":
-                print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [OK, {h.get('notes')} 篇]")
+                extra = []
+                if h.get("version"):
+                    extra.append(f"v{h['version']}")
+                if h.get("host_vault"):
+                    extra.append(f"host={h['host_vault']}")
+                if h.get("uid") is not None:
+                    extra.append(f"uid={h['uid']}")
+                suffix = f" ({', '.join(extra)})" if extra else ""
+                print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [OK, {h.get('notes')} 篇{suffix}]")
+                # 写链路探测（可 --no-write 跳过）：健康≠可写，Errno 13 类权限问题只有写一次才知道
+                if not args.no_write:
+                    import io, contextlib
+                    buf = io.StringIO()
+                    try:
+                        with contextlib.redirect_stdout(buf):
+                            cmd_probe(type("A", (), {})())
+                        print(f"写链路探测: [OK] {buf.getvalue().strip()}")
+                    except SystemExit:
+                        msg = buf.getvalue().strip().splitlines()
+                        print(f"写链路探测: [FAIL] {msg[0] if msg else ''}")
+                        for line in msg[1:]:
+                            print(f"  {line}")
+                        issues.append("远程写入失败：检查容器 user 与文件属主是否一致（Errno 13 场景），或网络/隧道")
             else:
                 print(f"远程写入 API (KB_REMOTE_URL): {REMOTE_URL}  [不可达: {h}]")
                 issues.append("远程写入 API 不可达：检查 vault_api 是否在跑 + frp 隧道")
@@ -658,7 +812,9 @@ def main():
     l.add_argument("dst")
     sub.add_parser("dedup").add_argument("query")
     sub.add_parser("remote")
-    sub.add_parser("config")
+    c = sub.add_parser("config")
+    c.add_argument("--no-write", action="store_true", help="跳过远程写链路探测")
+    p2 = sub.add_parser("probe", help="写链路探测：验证 vault 可写（远程 API 或本地直写）")
     sub.add_parser("classify").add_argument("text")
     o = sub.add_parser("organize")
     o.add_argument("--apply", action="store_true")
@@ -673,6 +829,7 @@ def main():
         "list": cmd_list, "search": cmd_search, "show": cmd_show, "add": cmd_add,
         "update": cmd_update, "backlinks": cmd_backlinks, "link": cmd_link,
         "dedup": cmd_dedup, "remote": cmd_remote, "config": cmd_config,
+        "probe": cmd_probe,
         "classify": cmd_classify, "organize": cmd_organize, "fetch": cmd_fetch,
         "upgrade": cmd_upgrade,
     }[args.cmd](args)

@@ -1,0 +1,51 @@
+name: cyber-vault
+services:
+  vault-api:
+    image: python:3.13-slim
+    container_name: cyber-vault-api
+    restart: unless-stopped
+    init: true
+    # 与 vault 文件属主保持一致（Windows virtiofs 挂载严格按 POSIX 校验，
+    # 容器 root 在 cap_drop ALL 下也写不了他属主文件 → 必须 uid 对齐）
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:3783:3783"
+    environment:
+      KB_VAULT: /vault
+      KB_HOST_VAULT: "D:/work/obsidian/贾维斯"
+      KB_API_PORT: "3783"
+      KB_API_TOKEN: "${KB_API_TOKEN:?Existing KB_API_TOKEN must be supplied}"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      TZ: Asia/Shanghai
+    volumes:
+      - type: bind
+        source: "D:/work/obsidian/贾维斯"
+        target: /vault
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "../scripts/vault_api.py"
+        target: /app/vault_api.py
+        read_only: true
+        bind:
+          create_host_path: false
+    working_dir: /app
+    command: ["python", "-u", "vault_api.py"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:3783/health',headers={'X-API-Token':os.environ['KB_API_TOKEN']}); urllib.request.urlopen(r,timeout=5).close()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
