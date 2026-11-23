@@ -319,11 +319,35 @@ def cmd_add(args):
 
 def cmd_update(args):
     if REMOTE_URL:
+        # 乐观锁：默认先读当前 updated 作版本令牌携带给服务端；--force 跳过
+        expected = None
+        if not args.force:
+            cur = remote_call("/show", {"name": args.name})
+            if isinstance(cur, dict) and cur.get("error"):
+                if cur.get("error") == "ambiguous":
+                    print_ambiguous(args.name, cur.get("candidates", []))
+                    return
+                print("远程错误/未找到:", cur["error"])
+                if cur.get("hint"):
+                    print(f"提示: {cur['hint']}")
+                return
+            import re as _re
+            m = _re.match(r"^---\n(.*?)\n---", cur.get("content", ""), _re.DOTALL)
+            if m:
+                for line in m.group(1).splitlines():
+                    if line.lower().startswith("updated:"):
+                        expected = line.split(":", 1)[1].strip()
+                        break
         res = remote_call("/update", {"name": args.name, "content": args.content,
-                                       "append": args.append, "by": args.by}, "POST")
+                                       "append": args.append, "by": args.by,
+                                       "expected_updated": expected}, "POST")
         if isinstance(res, dict) and res.get("error"):
             if res.get("error") == "ambiguous":
                 print_ambiguous(args.name, res.get("candidates", []))
+            elif res.get("error") == "conflict":
+                print(f"⛔ 版本冲突：读取时 updated={res.get('expected_updated')}，"
+                      f"当前 updated={res.get('current_updated')} —— 笔记已被其他会话修改")
+                print(f"   {res.get('hint')}")
             else:
                 print("远程错误:", res["error"])
                 if res.get("hint"):
@@ -339,8 +363,16 @@ def cmd_update(args):
         print(f"(未找到) {args.name}")
         sys.exit(1)
     text = p.read_text(encoding="utf-8")
-    backup_note(p)
     fm, body = parse_frontmatter(text)
+    read_updated = fm.get("updated", "")
+    if not args.force:
+        # 本地乐观锁：写入前重读，检测 Obsidian 等并发编辑
+        cur = parse_frontmatter(p.read_text(encoding="utf-8"))[0].get("updated", "")
+        if cur != read_updated:
+            print(f"⛔ 版本冲突：读取时 updated={read_updated}，当前 updated={cur} —— 文件已被其他程序修改")
+            print("   重新读取最新内容后再改；确认覆盖时加 --force")
+            sys.exit(1)
+    backup_note(p)
     if args.content:
         body = args.content
     if args.append:
@@ -806,6 +838,7 @@ def main():
     u.add_argument("--content")
     u.add_argument("--append")
     u.add_argument("--by")
+    u.add_argument("--force", action="store_true", help="跳过乐观锁版本校验，强制覆盖")
     sub.add_parser("backlinks").add_argument("name")
     l = sub.add_parser("link")
     l.add_argument("src")

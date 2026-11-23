@@ -31,7 +31,7 @@ VAULT = Path(os.environ.get("KB_VAULT", r"D:\work\obsidian\贾维斯"))
 PORT = int(os.environ.get("KB_API_PORT", "3783"))
 TOKEN = os.environ.get("KB_API_TOKEN", "")
 HOST_VAULT = os.environ.get("KB_HOST_VAULT", "")
-API_VERSION = "0.2.0"
+API_VERSION = "0.2.1"
 
 KEEP_VERSIONS = 10
 
@@ -183,15 +183,23 @@ def op_add(title, content, tags, links, subdir, source, author):
     return {"status": "created", "path": str(target.relative_to(VAULT)), "author": author}
 
 
-def op_update(name, content, append, by):
+def op_update(name, content, append, by, expected_updated=None):
     p, candidates = find_note_or_candidates(name)
     if candidates:
         return {"error": "ambiguous", "candidates": candidates}
     if not p:
         return {"error": "not found"}
     text = p.read_text(encoding="utf-8")
-    backup_note(p)
     fm, body = parse_fm(text)
+    # 乐观锁：客户端携带 expected_updated 时校验版本，防止并发覆盖丢失改动
+    if expected_updated and (fm.get("updated", "") or "") != expected_updated:
+        return {
+            "error": "conflict",
+            "expected_updated": expected_updated,
+            "current_updated": fm.get("updated", ""),
+            "hint": "该笔记在读取后被其他会话修改过。请重新 show 获取最新内容再改；确认要覆盖时用 kb_ops update --force。",
+        }
+    backup_note(p)
     if content:
         body = content
     if append:
@@ -340,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
             if p.path == "/add":
                 self._send(200, op_add(b.get("title"), b.get("content"), b.get("tags"), b.get("links"), b.get("dir"), b.get("source"), b.get("author")))
             elif p.path == "/update":
-                self._send(200, op_update(b.get("name"), b.get("content"), b.get("append"), b.get("by")))
+                self._send(200, op_update(b.get("name"), b.get("content"), b.get("append"), b.get("by"), b.get("expected_updated")))
             elif p.path == "/link":
                 self._send(200, op_link(b.get("src"), b.get("dst")))
             else:

@@ -1,6 +1,6 @@
 ---
 name: knowledge-vault
-version: 0.2.0
+version: 0.2.1
 description: 赛博大脑——个人知识库桥梁 skill。把对话中的核心知识、信息、习惯、技能、重要资料整理成 Obsidian 双链笔记写入本地 vault，经 DeepTutor 实现远程访问与 AI 检索；对话中可链接、修订、增量补充、双链关联、合并去重。当用户说"存入知识库/入库/记进知识库/查知识库/升级知识库/链接知识库/赛博大脑/升级赛博大脑/升级skill"，或对话中出现值得长期沉淀的核心知识、可复用技能、用户习惯、重要决策、踩坑经验，或用户发来 URL/网页资料（走 defuddle 提纯入库）时触发。
 agent_created: true
 ---
@@ -184,6 +184,7 @@ python scripts/kb_ops.py upgrade                    # 自升级：从 GitHub 拉
 - compose 中 `user: "1000:1000"` 必须与 vault 文件属主一致——Docker Desktop virtiofs 挂载严格按 POSIX 权限校验，且 `cap_drop: [ALL]` 下容器 root 也无法 chmod/chown 他属主文件。换机器部署时先用 `ls -ln` 看文件属主，再对齐 uid。
 - 服务"健康"≠"可写"。部署后或怀疑权限变化时执行 `python scripts/kb_ops.py probe`（config 自检也会自动探测写链路）。
 - 每次覆盖写之前 API 会自动把原文快照到 `<vault>/.kb_versions/<笔记名>/`（每条保留最近 10 份），误改可从那里找回。
+- 并发保护：update 默认带乐观锁（以 frontmatter `updated` 为版本令牌），读取后被其他会话改过会报版本冲突并给出指引；确认覆盖加 `--force`。
 
 ### 客户端（其他龙虾）
 ```
